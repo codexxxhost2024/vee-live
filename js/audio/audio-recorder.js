@@ -1,145 +1,60 @@
-import { Logger } from '../utils/logger.js';
-import { ApplicationError, ErrorCodes } from '../utils/error-boundary.js';
-import { CONFIG } from '../config/config.js';
+// js/audio/audio-recorder.js
+import { uploadAudio } from '../firebase-config.js'; // Corrected path
+import { Logger } from '../utils/logger.js'; // Corrected path
 
-/**
- * @class AudioRecorder
- * @description Handles audio recording functionality with configurable sample rate
- * and real-time audio processing through WebAudio API.
- */
 export class AudioRecorder {
-    /**
-     * @constructor
-     * @param {number} sampleRate - The sample rate for audio recording (default: 16000)
-     */
-    constructor(sampleRate = CONFIG.AUDIO.INPUT_SAMPLE_RATE) {
-        this.sampleRate = sampleRate;
-        this.stream = null;
+    constructor() {
         this.mediaRecorder = null;
-        this.audioContext = null;
-        this.source = null;
-        this.processor = null;
-        this.onAudioData = null;
-        
-        // Bind methods to preserve context
-        this.start = this.start.bind(this);
-        this.stop = this.stop.bind(this);
-
-        // Add state tracking
+        this.audioChunks = [];
         this.isRecording = false;
     }
 
-    /**
-     * @method start
-     * @description Starts audio recording with the specified callback for audio data.
-     * @param {Function} onAudioData - Callback function for processed audio data.
-     * @throws {Error} If unable to access microphone or set up audio processing.
-     * @async
-     */
-    async start(onAudioData) {
-        this.onAudioData = onAudioData;
-        try {
-            // Request microphone access
-            this.stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    channelCount: 1,
-                    sampleRate: this.sampleRate
-                } 
-            });
-            
-            this.audioContext = new AudioContext({ sampleRate: this.sampleRate });
-            this.source = this.audioContext.createMediaStreamSource(this.stream);
+    start(stream, onDataAvailable) {
+        return new Promise((resolve, reject) => {
+            try {
+                this.mediaRecorder = new MediaRecorder(stream);
+                this.audioChunks = [];
 
-            // Load and initialize audio worklet
-            await this.audioContext.audioWorklet.addModule('js/audio/worklets/audio-processing.js');
-            this.processor = new AudioWorkletNode(this.audioContext, 'audio-recorder-worklet');
-            
-            // Handle processed audio data
-            this.processor.port.onmessage = (event) => {
-                if (event.data.event === 'chunk' && this.onAudioData && this.isRecording) {
-                    const base64Data = this.arrayBufferToBase64(event.data.data.int16arrayBuffer);
-                    this.onAudioData(base64Data);
-                }
-            };
+                this.mediaRecorder.ondataavailable = event => {
+                    this.audioChunks.push(event.data);
+                    if (onDataAvailable) {
+                        const fileReader = new FileReader();
+                        fileReader.onloadend = () => {
+                            const base64Data = fileReader.result.split(',')[1];
+                            onDataAvailable(base64Data);
+                        };
+                        fileReader.readAsDataURL(event.data);
+                    }
+                };
 
-            // Connect audio nodes
-            this.source.connect(this.processor);
-            this.processor.connect(this.audioContext.destination);
-            this.isRecording = true;
-        } catch (error) {
-            console.error('Error starting audio recording:', error);
-            throw error;
-        }
+                this.mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(this.audioChunks, { 'type': 'audio/webm; codecs=opus' });
+                    if (uploadAudio) { // Check if uploadAudio is defined (optional, defensive coding)
+                        const audioUrl = await uploadAudio(audioBlob);
+                        Logger.info('Audio URL from Firebase:', audioUrl);
+                        // You can handle the audioUrl here if needed, e.g., save it to chat history
+                    }
+                    resolve();
+                };
+
+                this.mediaRecorder.start();
+                this.isRecording = true;
+                Logger.info('Recording started');
+            } catch (error) {
+                reject(error);
+            }
+        });
     }
 
-    /**
-     * @method stop
-     * @description Stops the current recording session and cleans up resources.
-     * @throws {ApplicationError} If an error occurs during stopping the recording.
-     */
     stop() {
-        try {
-            if (!this.isRecording) {
-                Logger.warn('Attempting to stop recording when not recording');
-                return;
-            }
-
-            // Stop the microphone stream
-            if (this.stream) {
-                this.stream.getTracks().forEach(track => track.stop());
-                this.stream = null;
-            }
-
+        if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+            this.mediaRecorder.stop();
             this.isRecording = false;
-            Logger.info('Audio recording stopped successfully');
-        } catch (error) {
-            Logger.error('Error stopping audio recording', error);
-            throw new ApplicationError(
-                'Failed to stop audio recording',
-                ErrorCodes.AUDIO_STOP_FAILED,
-                { originalError: error }
-            );
+            Logger.info('Recording stopped');
         }
     }
 
-    /**
-     * @method arrayBufferToBase64
-     * @description Converts ArrayBuffer to Base64 string.
-     * @param {ArrayBuffer} buffer - The ArrayBuffer to convert.
-     * @returns {string} The Base64 representation of the ArrayBuffer.
-     * @throws {ApplicationError} If an error occurs during conversion.
-     * @private
-     */
-    arrayBufferToBase64(buffer) {
-        try {
-            const bytes = new Uint8Array(buffer);
-            let binary = '';
-            for (let i = 0; i < bytes.byteLength; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary);
-        } catch (error) {
-            Logger.error('Error converting buffer to base64', error);
-            throw new ApplicationError(
-                'Failed to convert audio data',
-                ErrorCodes.AUDIO_CONVERSION_FAILED,
-                { originalError: error }
-            );
-        }
+    isAudioRecording() {
+        return this.isRecording;
     }
-
-    /**
-     * @method checkBrowserSupport
-     * @description Checks if the browser supports required audio APIs.
-     * @throws {ApplicationError} If the browser does not support audio recording.
-     * @private
-     */
-    checkBrowserSupport() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new ApplicationError(
-                'Audio recording is not supported in this browser',
-                ErrorCodes.AUDIO_NOT_SUPPORTED
-            );
-        }
-    }
-} 
+}
