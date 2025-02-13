@@ -1,0 +1,96 @@
+<!-- memory.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Memory</title>
+    <link rel="stylesheet" href="css/style.css"> <!-- Assuming style.css is in the css folder -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f0f0f0;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            word-wrap: break-word; /* Allow long words to break */
+        }
+        .user {
+            background-color: #e6f7ff;
+            text-align: right;
+        }
+        .ai {
+            background-color: #f0f0f0;
+            text-align: left;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 0.8em;
+            display: block;
+            text-align: right;
+        }
+        audio {
+            width: 100%; /* Make audio player responsive */
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Conversation History</h1>
+        <div id="chat-history">
+            <!-- Chat messages will be displayed here -->
+        </div>
+         <div class="main-controls">  <!-- Add navigation back to chat -->
+            <button id="chat-view-button">Back to Chat</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { getChatHistory } from './firebase-config.js';  // Corrected path
+        const chatHistoryDiv = document.getElementById('chat-history');
+        const chatViewButton = document.getElementById('chat-view-button');
+
+        async function loadChatHistory() {
+            try {
+                const messages = await getChatHistory(100); // Fetch a reasonable number of messages
+                messages.forEach(message => {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.classList.add('message');
+                    messageDiv.classList.add(message.role.toLowerCase());
+                    const timestamp = message.createdOn ? new Date(message.createdOn).toLocaleString() : 'N/A';
+                    let messageContent = `<p>${message.message}</p><span class="timestamp">${timestamp}</span>`;
+                    if (message.audioUrl) {
+                        messageContent += `<audio controls src="${message.audioUrl}"></audio>`;
+                    }
+                    messageDiv.innerHTML = messageContent;
+                    chatHistoryDiv.appendChild(messageDiv);
+                });
+            } catch (error) {
+                console.error('Error loading chat history:', error);
+                chatHistoryDiv.innerText = 'Error loading chat history.';
+            }
+        }
+
+        chatViewButton.addEventListener('click', () => {
+            window.location.href = 'index.html'; // Navigate back to the main chat
+        });
+
+        loadChatHistory();
+    </script>
+</body>
+</html>
