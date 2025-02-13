@@ -1,7 +1,7 @@
 // config.js
 export const CONFIG = {
     API: {
-        KEY: 'YOUR_GEMINI_API_KEY_HERE', // Replace with your Gemini API key
+        KEY: 'AIzaSyACuWwgL5-PXXrJ4qbkWncwBY8PMY0kgTY', // Replace with your Gemini API key
         BASE_URL: 'wss://generativelanguage.googleapis.com/ws',
         VERSION: 'v1alpha',
         MODEL_NAME: 'models/gemini-2.0-flash-exp'
